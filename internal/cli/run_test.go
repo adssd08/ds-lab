@@ -5,6 +5,8 @@ import (
 	"testing"
 )
 
+// TestRun checks successful execution and exact output, including the newline.
+// A buffer captures output without redirecting the process-wide stdout stream.
 func TestRun(t *testing.T) {
 	var out bytes.Buffer
 	if err := Run(&out); err != nil {
