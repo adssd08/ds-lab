@@ -7,6 +7,7 @@ build:
 	go build -o bin/ds-lab ./cmd/ds-lab
 	go build -o bin/node ./cmd/node
 	go build -o bin/launcher ./cmd/launcher
+	go build -o bin/stdio-node ./cmd/stdio-node
 
 # Discover Go tests recursively. Shell integration checks are run separately.
 test:
