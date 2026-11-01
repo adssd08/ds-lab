@@ -30,7 +30,7 @@ func decodeOne(t *testing.T, data []byte) any {
 	return value
 }
 
-func TestRunEchoGolden(t *testing.T) {
+func TestEchoGolden(t *testing.T) {
 	request, err := os.ReadFile("testdata/echo-request.json")
 
 	if err != nil {
@@ -43,7 +43,15 @@ func TestRunEchoGolden(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	if err := Run(bytes.NewReader(request), &output); err != nil {
+	var envelope Envelope
+	if err := json.Unmarshal(request, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	response, err := Echo(envelope, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.NewEncoder(&output).Encode(response); err != nil {
 		t.Fatal(err)
 	}
 

@@ -64,18 +64,21 @@ func TestRunEmptyInput(t *testing.T) {
 
 func TestRunMultipleRequestsAndLargeIDs(t *testing.T) {
 	ids := []uint64{9007199254740993, ^uint64(0)}
-	input := echoInput(t, ids[0], "first") + "\n" + echoInput(t, ids[1], "second") + "\n"
+	input := initLine(t) + echoInput(t, ids[0], "first") + "\n" + echoInput(t, ids[1], "second") + "\n"
 	var out bytes.Buffer
 	if err := Run(strings.NewReader(input), &out); err != nil {
 		t.Fatal(err)
 	}
 	replies := readReplies(t, out.Bytes())
-	if len(replies) != 2 || bytes.Count(out.Bytes(), []byte("\n")) != 2 {
+	if len(replies) != 3 || bytes.Count(out.Bytes(), []byte("\n")) != 3 {
 		t.Fatalf("expected two response lines: %q", out.String())
 	}
-	for i, reply := range replies {
+	if replies[0].Body.Type != "init_ok" {
+		t.Fatal("initialization was not acknowledged")
+	}
+	for i, reply := range replies[1:] {
 		wantText := []string{"first", "second"}[i]
-		want := EchoResponse{Type: "echo_ok", MsgID: uint64(i + 1), InReplyTo: ids[i], Echo: wantText}
+		want := EchoResponse{Type: "echo_ok", MsgID: uint64(i + 2), InReplyTo: ids[i], Echo: wantText}
 		if reply.Src != "n1" || reply.Dest != "c1" || reply.Body != want {
 			t.Fatalf("reply %d = %#v, want body %#v", i, reply, want)
 		}
@@ -86,14 +89,14 @@ func TestRunPreservesTextAndFraming(t *testing.T) {
 	for _, text := range []string{"", "quotes: \" backslash: \\ newline:\nUnicode: नमस्ते 🌍", strings.Repeat("x", 70*1024)} {
 		for _, ending := range []string{"", "\n", "\r\n"} {
 			var out bytes.Buffer
-			if err := Run(strings.NewReader(echoInput(t, 17, text)+ending), &out); err != nil {
+			if err := Run(strings.NewReader(initLine(t)+echoInput(t, 17, text)+ending), &out); err != nil {
 				t.Fatal(err)
 			}
 			replies := readReplies(t, out.Bytes())
-			if len(replies) != 1 || replies[0].Body.Echo != text || replies[0].Body.InReplyTo != 17 {
+			if len(replies) != 2 || replies[0].Body.Type != "init_ok" || replies[1].Body.Echo != text || replies[1].Body.InReplyTo != 17 {
 				t.Fatal("text or correlation changed")
 			}
-			if bytes.Count(out.Bytes(), []byte("\n")) != 1 || !bytes.HasSuffix(out.Bytes(), []byte("\n")) {
+			if bytes.Count(out.Bytes(), []byte("\n")) != 2 || !bytes.HasSuffix(out.Bytes(), []byte("\n")) {
 				t.Fatal("response must occupy one terminated line")
 			}
 		}
@@ -115,24 +118,25 @@ func TestRunRejectsInvalidRequests(t *testing.T) {
 	for name, input := range tests {
 		t.Run(name, func(t *testing.T) {
 			var out bytes.Buffer
-			if err := Run(strings.NewReader(input), &out); err == nil {
+			if err := Run(strings.NewReader(initLine(t)+input), &out); err == nil {
 				t.Fatal("invalid request accepted")
 			}
-			if out.Len() != 0 {
-				t.Fatalf("invalid request produced output %q", out.String())
+			replies := readReplies(t, out.Bytes())
+			if len(replies) != 1 || replies[0].Body.Type != "init_ok" {
+				t.Fatalf("invalid request produced an extra response: %q", out.String())
 			}
 		})
 	}
 }
 
 func TestRunStopsAtFirstBadRequest(t *testing.T) {
-	input := echoInput(t, 41, "before") + "\n{\n" + echoInput(t, 42, "after") + "\n"
+	input := initLine(t) + echoInput(t, 41, "before") + "\n{\n" + echoInput(t, 42, "after") + "\n"
 	var out bytes.Buffer
 	if err := Run(strings.NewReader(input), &out); err == nil {
 		t.Fatal("expected malformed-input error")
 	}
 	replies := readReplies(t, out.Bytes())
-	if len(replies) != 1 || replies[0].Body.Echo != "before" {
+	if len(replies) != 2 || replies[0].Body.Type != "init_ok" || replies[1].Body.Echo != "before" {
 		t.Fatalf("unexpected responses: %#v", replies)
 	}
 }
@@ -162,7 +166,7 @@ func TestRunPropagatesReadError(t *testing.T) {
 func TestRunPropagatesWriteErrorAndStops(t *testing.T) {
 	failure := errors.New("output unavailable")
 	writer := &failingWriter{err: failure}
-	input := echoInput(t, 1, "first") + "\n" + echoInput(t, 2, "second") + "\n"
+	input := initLine(t) + echoInput(t, 1, "first") + "\n" + echoInput(t, 2, "second") + "\n"
 	if err := Run(strings.NewReader(input), writer); !errors.Is(err, failure) {
 		t.Fatalf("error = %v, want write failure", err)
 	}

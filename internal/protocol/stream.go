@@ -9,13 +9,15 @@ import (
 
 const maxInputBuffer = 1 << 20
 
-// Run processes one JSON request per line until EOF or the first error.
+// Run processes one JSON request per line until EOF or a Go error.
+// Initialization is required; protocol error responses do not stop the stream.
 // The caller owns the reader and writer; Run does not close them.
 func Run(in io.Reader, out io.Writer) error {
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 4096), maxInputBuffer)
 
 	encoder := json.NewEncoder(out)
+	node := NewNode()
 	var nextID uint64 = 1
 
 	for scanner.Scan() {
@@ -28,7 +30,7 @@ func Run(in io.Reader, out io.Writer) error {
 			return fmt.Errorf("response message IDs exhausted")
 		}
 
-		response, err := Echo(request, nextID)
+		response, err := node.Handle(request, nextID)
 		if err != nil {
 			return err
 		}
